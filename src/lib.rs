@@ -73,7 +73,7 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         }
 
         line.clear();
-        writeln!(self.output, "ix len")?;
+        writeln!(self.output, "ix len: ")?;
         self.input.read_line(&mut line)?;
         let ix_data_len: usize = line.trim().parse()?;
         let mut ix_data = vec![0; ix_data_len];
