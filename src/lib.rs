@@ -1,5 +1,6 @@
 use std::error::Error;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Write, BufReader};
+use std::net::TcpStream;
 use std::str::FromStr;
 
 use poc_framework::solana_sdk::instruction::{AccountMeta, Instruction};
@@ -87,5 +88,14 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         );
 
         Ok(self.env.execute_as_transaction(&[ix], signers))
+    }
+}
+
+impl TryFrom<TcpStream> for Challenge<BufReader<TcpStream>, TcpStream> {
+    type Error = std::io::Error;
+
+    fn try_from(socket: TcpStream) -> Result<Self, Self::Error> {
+        let reader = BufReader::new(socket.try_clone()?);
+        Ok(Challenge::new(reader, socket))
     }
 }
