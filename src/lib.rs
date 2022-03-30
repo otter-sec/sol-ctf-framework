@@ -3,6 +3,7 @@ use std::io::{BufRead, Write, BufReader};
 use std::net::TcpStream;
 use std::str::FromStr;
 
+use poc_framework::LocalEnvironmentBuilder;
 use poc_framework::solana_sdk::instruction::{AccountMeta, Instruction};
 use poc_framework::solana_sdk::signature::Keypair;
 use poc_framework::{Environment, LocalEnvironment, solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction};
@@ -10,20 +11,38 @@ use tempfile::NamedTempFile;
 pub struct Challenge<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub env: LocalEnvironment
+    pub env: LocalEnvironment,
+}
+
+pub struct ChallengeBuilder<R: BufRead, W: Write> {
+    input: R,
+    output: W,
+    pub builder: LocalEnvironmentBuilder,
+}
+
+// TODO: move relevant input functions from Challenge to ChallengeBuilder
+impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
+    /// Build challenge environment
+    pub fn build(mut self) -> Challenge<R, W> {
+        Challenge {
+            input: self.input,
+            output: self.output,
+            env: self.builder.build(),
+        }
+    }
 }
 
 impl<R: BufRead, W: Write> Challenge<R, W> {
-    pub fn new(input: R, output: W) -> Challenge<R, W> {
-        let env = LocalEnvironment::builder().build();
-        Challenge {
+    pub fn builder(input: R, output: W) -> ChallengeBuilder<R, W> {
+        let builder = LocalEnvironment::builder();
+        ChallengeBuilder {
             input,
             output,
-            env,
+            builder,
         }
     }
 
-    /// Reads program from input and deploys on environment
+    /// Reads program from input and deploys in environment
     pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
         let mut line = String::new();
         writeln!(self.output, "program len: ")?;
@@ -91,11 +110,11 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
     }
 }
 
-impl TryFrom<TcpStream> for Challenge<BufReader<TcpStream>, TcpStream> {
+impl TryFrom<TcpStream> for ChallengeBuilder<BufReader<TcpStream>, TcpStream> {
     type Error = std::io::Error;
 
     fn try_from(socket: TcpStream) -> Result<Self, Self::Error> {
         let reader = BufReader::new(socket.try_clone()?);
-        Ok(Challenge::new(reader, socket))
+        Ok(Challenge::builder(reader, socket))
     }
 }
