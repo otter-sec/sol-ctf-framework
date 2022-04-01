@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 poc-framework = { git = "https://github.com/otter-sec/solana-poc-framework" }
 tempfile = "*"
+sha2 = "*"
+rand = "*"

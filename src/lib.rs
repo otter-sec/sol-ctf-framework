@@ -3,11 +3,29 @@ use std::io::{BufRead, Write, BufReader};
 use std::net::TcpStream;
 use std::str::FromStr;
 
+use poc_framework::solana_sdk::signer::Signer;
+
 use poc_framework::LocalEnvironmentBuilder;
 use poc_framework::solana_sdk::instruction::{AccountMeta, Instruction};
 use poc_framework::solana_sdk::signature::Keypair;
 use poc_framework::{Environment, LocalEnvironment, solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction};
 use tempfile::NamedTempFile;
+
+mod helpers {
+    use sha2::{Digest, Sha256};
+    use rand::{prelude::StdRng, SeedableRng};
+    use poc_framework::solana_sdk::signature::Keypair;
+
+    pub fn keypair_from_data(data: &[u8]) -> Keypair {
+        let mut hash = Sha256::default();
+        hash.update(&data);
+
+        // panic here is probably fine since this should always be 32 bytes, regardless of user input
+        let mut rng = StdRng::from_seed(hash.finalize()[..].try_into().unwrap());
+        Keypair::generate(&mut rng)
+    }
+}
+
 pub struct Challenge<R: BufRead, W: Write> {
     input: R,
     output: W,
@@ -20,7 +38,6 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
     pub builder: LocalEnvironmentBuilder,
 }
 
-// TODO: move relevant input functions from Challenge to ChallengeBuilder
 impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
     /// Build challenge environment
     pub fn build(mut self) -> Challenge<R, W> {
@@ -29,6 +46,41 @@ impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
             output: self.output,
             env: self.builder.build(),
         }
+    }
+
+    /// Adds programs to challenge environment
+    /// 
+    /// Returns vector of program pubkeys, with positions corresponding to input slice
+    pub fn chall_programs(&mut self, programs: &[&str]) -> Vec<Pubkey> {
+        let mut keys = vec![];
+        for &path in programs {
+            let program_so = std::fs::read(path).unwrap();
+            let program_keypair = helpers::keypair_from_data(&program_so);
+
+            self.builder.add_program(program_keypair.pubkey(), path);
+            keys.push(program_keypair.pubkey());
+        }
+
+        keys
+    }
+
+    /// Reads program from input and adds it to environment
+    pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
+        let mut line = String::new();
+        writeln!(self.output, "program len: ")?;
+        self.input.read_line(&mut line)?;
+        let len: usize = line.trim().parse()?;
+
+        let mut input_so = vec![0; len];
+        self.input.read_exact(&mut input_so)?;
+
+        let mut input_file = NamedTempFile::new()?;
+        input_file.write_all(&input_so)?;
+
+        let program_keypair = helpers::keypair_from_data(&input_so);
+        self.builder.add_program(program_keypair.pubkey(), input_file);
+
+        Ok(program_keypair.pubkey())
     }
 }
 
@@ -42,23 +94,6 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         }
     }
 
-    /// Reads program from input and deploys in environment
-    pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
-        let mut line = String::new();
-        writeln!(self.output, "program len: ")?;
-        self.input.read_line(&mut line)?;
-        let len: usize = line.trim().parse()?;
-
-        let mut input_so = vec![0; len];
-        self.input.read_exact(&mut input_so)?;
-
-        let mut input_file = NamedTempFile::new()?;
-        input_file.write_all(&input_so)?;
-
-        let program_address = self.env.deploy_program(input_file.path());
-        Ok(program_address)
-    }
-    
     /// Reads instruction accounts/data from input and sends in transaction to specified program
     /// 
     /// # Account Format:
