@@ -9,4 +9,8 @@ edition = "2021"
 poc-framework = { git = "https://github.com/otter-sec/solana-poc-framework" }
 tempfile = "*"
 sha2 = "*"
-rand = "*"
+rand = "0.7.3"
+
+[dev-dependencies]
+threadpool = "1.8.1"
+anchor-client = "0.23.0"
