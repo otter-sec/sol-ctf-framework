@@ -9,7 +9,6 @@ use sol_ctf_framework::ChallengeBuilder;
 use poc_framework::Environment;
 use poc_framework::solana_sdk::signature::Keypair;
 use poc_framework::solana_sdk::signature::Signer;
-use anchor_client::solana_sdk::system_instruction::transfer;
 use solana_program::pubkey::Pubkey;
 use solana_program::system_program;
 
@@ -48,21 +47,6 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     builder.builder.add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
 
     let mut challenge = builder.build();
-
-    challenge.env.execute_as_transaction(
-        &[transfer(
-            &challenge.env.payer().pubkey(),
-            &user.pubkey(),
-            INIT_BAL,
-            ),
-            transfer(
-                &challenge.env.payer().pubkey(),
-                &vault,
-                VAULT_BAL,
-                )
-        ],
-        &[&challenge.env.payer()],
-        );
 
     challenge.input_instruction(solve_pubkey, &[&user]).unwrap();
 
