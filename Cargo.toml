@@ -14,3 +14,4 @@ rand = "0.7.3"
 [dev-dependencies]
 threadpool = "1.8.1"
 anchor-client = "0.23.0"
+solana-program = "*"

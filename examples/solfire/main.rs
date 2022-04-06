@@ -10,6 +10,8 @@ use poc_framework::Environment;
 use poc_framework::solana_sdk::signature::Keypair;
 use poc_framework::solana_sdk::signature::Signer;
 use anchor_client::solana_sdk::system_instruction::transfer;
+use solana_program::pubkey::Pubkey;
+use solana_program::system_program;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind("0.0.0.0:8080")?;
@@ -36,9 +38,14 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     writeln!(socket, "solve pubkey: {}", solve_pubkey)?;
     writeln!(socket, "user pubkey: {}", user.pubkey())?;
 
+    let (vault, _) = Pubkey::find_program_address(&["vault".as_ref()], &program_pubkey);
+
     const TARGET_AMT: u64 = 50_000;
     const INIT_BAL: u64 = 10;
     const VAULT_BAL: u64 = 1_000_000;
+
+    builder.builder.add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
+    builder.builder.add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
 
     let mut challenge = builder.build();
 
@@ -50,7 +57,7 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
             ),
             transfer(
                 &challenge.env.payer().pubkey(),
-                &program_pubkey,
+                &vault,
                 VAULT_BAL,
                 )
         ],
@@ -62,7 +69,7 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     let balance = challenge.env.get_account(user.pubkey()).unwrap().lamports;
 
     writeln!(socket, "user bal: {:?}", balance)?;
-    writeln!(socket, "vault bal: {:?}", challenge.env.get_account(program_pubkey).unwrap().lamports)?;
+    writeln!(socket, "vault bal: {:?}", challenge.env.get_account(vault).unwrap().lamports)?;
 
     if balance > TARGET_AMT {
         writeln!(socket, "congrats!")?;
