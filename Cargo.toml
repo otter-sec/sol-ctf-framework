@@ -2,16 +2,20 @@
 name = "sol-ctf-framework"
 version = "0.1.0"
 edition = "2021"
+homepage = "https://github.com/otter-sec/sol-ctf-framework"
+description = "A framework for building solana based capture the flag challenges"
+repository = "https://github.com/otter-sec/sol-ctf-framework"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-poc-framework = { git = "https://github.com/otter-sec/solana-poc-framework" }
-tempfile = "*"
-sha2 = "*"
+poc-framework-osec = "0.1.0"
+tempfile = "3.2.0"
+sha2 = "0.10.2"
 rand = "0.7.3"
 
 [dev-dependencies]
 threadpool = "1.8.1"
 anchor-client = "0.23.0"
-solana-program = "*"
+solana-program = "1.8.14"

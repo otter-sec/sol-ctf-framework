@@ -3,18 +3,18 @@ use std::io::{BufRead, Write, BufReader};
 use std::net::TcpStream;
 use std::str::FromStr;
 
-use poc_framework::solana_sdk::signer::Signer;
+use poc_framework_osec::solana_sdk::signer::Signer;
 
-use poc_framework::LocalEnvironmentBuilder;
-use poc_framework::solana_sdk::instruction::{AccountMeta, Instruction};
-use poc_framework::solana_sdk::signature::Keypair;
-use poc_framework::{Environment, LocalEnvironment, solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction};
+use poc_framework_osec::LocalEnvironmentBuilder;
+use poc_framework_osec::solana_sdk::instruction::{AccountMeta, Instruction};
+use poc_framework_osec::solana_sdk::signature::Keypair;
+use poc_framework_osec::{Environment, LocalEnvironment, solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction};
 use tempfile::NamedTempFile;
 
 mod helpers {
     use sha2::{Digest, Sha256};
     use rand::{prelude::StdRng, SeedableRng};
-    use poc_framework::solana_sdk::signature::Keypair;
+    use poc_framework_osec::solana_sdk::signature::Keypair;
 
     pub fn keypair_from_data(data: &[u8]) -> Keypair {
         let mut hash = Sha256::default();

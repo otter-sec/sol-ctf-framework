@@ -6,9 +6,9 @@ use threadpool::ThreadPool;
 use std::io::Write;
 use std::env;
 use sol_ctf_framework::ChallengeBuilder;
-use poc_framework::Environment;
-use poc_framework::solana_sdk::signature::Keypair;
-use poc_framework::solana_sdk::signature::Signer;
+use poc_framework_osec::Environment;
+use poc_framework_osec::solana_sdk::signature::Keypair;
+use poc_framework_osec::solana_sdk::signature::Signer;
 use solana_program::pubkey::Pubkey;
 use solana_program::system_program;
 
