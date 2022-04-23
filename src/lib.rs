@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 use std::error::Error;
 use std::io::{BufRead, Write, BufReader};
 use std::net::TcpStream;
