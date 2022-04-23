@@ -1,16 +1,16 @@
-use std:: {
-    net::{TcpListener, TcpStream},
-    error::Error,
-};
-use threadpool::ThreadPool;
-use std::io::Write;
-use std::env;
-use sol_ctf_framework::ChallengeBuilder;
-use poc_framework_osec::Environment;
 use poc_framework_osec::solana_sdk::signature::Keypair;
 use poc_framework_osec::solana_sdk::signature::Signer;
+use poc_framework_osec::Environment;
+use sol_ctf_framework::ChallengeBuilder;
 use solana_program::pubkey::Pubkey;
 use solana_program::system_program;
+use std::env;
+use std::io::Write;
+use std::{
+    error::Error,
+    net::{TcpListener, TcpStream},
+};
+use threadpool::ThreadPool;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind("0.0.0.0:8080")?;
@@ -43,8 +43,12 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     const INIT_BAL: u64 = 10;
     const VAULT_BAL: u64 = 1_000_000;
 
-    builder.builder.add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
-    builder.builder.add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
+    builder
+        .builder
+        .add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
+    builder
+        .builder
+        .add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
 
     let mut challenge = builder.build();
 
@@ -53,7 +57,11 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     let balance = challenge.env.get_account(user.pubkey()).unwrap().lamports;
 
     writeln!(socket, "user bal: {:?}", balance)?;
-    writeln!(socket, "vault bal: {:?}", challenge.env.get_account(vault).unwrap().lamports)?;
+    writeln!(
+        socket,
+        "vault bal: {:?}",
+        challenge.env.get_account(vault).unwrap().lamports
+    )?;
 
     if balance > TARGET_AMT {
         writeln!(socket, "congrats!")?;

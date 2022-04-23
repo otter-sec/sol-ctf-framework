@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use std::error::Error;
-use std::io::{BufRead, Write, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
 
 use poc_framework_osec::solana_sdk::signer::Signer;
 
-use poc_framework_osec::LocalEnvironmentBuilder;
 use poc_framework_osec::solana_sdk::instruction::{AccountMeta, Instruction};
 use poc_framework_osec::solana_sdk::signature::Keypair;
-use poc_framework_osec::{Environment, LocalEnvironment, solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction};
+use poc_framework_osec::LocalEnvironmentBuilder;
+use poc_framework_osec::{
+    solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction,
+    Environment, LocalEnvironment,
+};
 use tempfile::NamedTempFile;
 
 mod helpers {
-    use sha2::{Digest, Sha256};
-    use rand::{prelude::StdRng, SeedableRng};
     use poc_framework_osec::solana_sdk::signature::Keypair;
+    use rand::{prelude::StdRng, SeedableRng};
+    use sha2::{Digest, Sha256};
 
     pub fn keypair_from_data(data: &[u8]) -> Keypair {
         let mut hash = Sha256::default();
@@ -39,7 +42,7 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
     pub builder: LocalEnvironmentBuilder,
 }
 
-impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
+impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// Build challenge environment
     pub fn build(mut self) -> Challenge<R, W> {
         Challenge {
@@ -50,7 +53,7 @@ impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
     }
 
     /// Adds programs to challenge environment
-    /// 
+    ///
     /// Returns vector of program pubkeys, with positions corresponding to input slice
     pub fn chall_programs(&mut self, programs: &[&str]) -> Vec<Pubkey> {
         let mut keys = vec![];
@@ -79,7 +82,8 @@ impl<R: BufRead, W:Write> ChallengeBuilder<R, W> {
         input_file.write_all(&input_so)?;
 
         let program_keypair = helpers::keypair_from_data(&input_so);
-        self.builder.add_program(program_keypair.pubkey(), input_file);
+        self.builder
+            .add_program(program_keypair.pubkey(), input_file);
 
         Ok(program_keypair.pubkey())
     }
@@ -96,13 +100,17 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
     }
 
     /// Reads instruction accounts/data from input and sends in transaction to specified program
-    /// 
+    ///
     /// # Account Format:
     /// `[meta] [pubkey]`
-    /// 
+    ///
     /// `[meta]` - contains "s" if account is a signer, "w" if it is writable
     /// `[pubkey]` - the address of the account
-    pub fn input_instruction(&mut self, program_id: Pubkey, signers: &[&Keypair]) -> Result<EncodedConfirmedTransaction, Box<dyn Error>> {
+    pub fn input_instruction(
+        &mut self,
+        program_id: Pubkey,
+        signers: &[&Keypair],
+    ) -> Result<EncodedConfirmedTransaction, Box<dyn Error>> {
         let mut line = String::new();
         writeln!(self.output, "num accounts: ")?;
         self.input.read_line(&mut line)?;
@@ -136,11 +144,7 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
 
         self.input.read_exact(&mut ix_data)?;
 
-        let ix = Instruction::new_with_bytes(
-            program_id,
-            &ix_data,
-            metas
-        );
+        let ix = Instruction::new_with_bytes(program_id, &ix_data, metas);
 
         Ok(self.env.execute_as_transaction(&[ix], signers))
     }
