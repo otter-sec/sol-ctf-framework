@@ -6,7 +6,6 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signer::{keypair::Keypair, Signer},
-    system_program,
     sysvar::rent::Rent,
     transaction::Transaction,
 };
@@ -207,7 +206,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                         Account {
                             lamports,
                             data: vec![],
-                            owner: system_program::id(),
+                            owner: program_id,
                             executable: is_executeable,
                             rent_epoch: 100000000,
                         },
@@ -272,11 +271,11 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         let mut tr: Transaction = Transaction::new_with_payer(instr, Some(&payer.pubkey()));
         for &signer in signers {
             let hash = self.get_latest_blockhash().await;
-            tr.sign(&[signer], hash)
+            tr.try_partial_sign(&[signer], hash).unwrap();
         }
-        tr.sign(&[payer], self.get_latest_blockhash().await);
-        dbg!(&tr);
-        self.process_transaction(tr).await
+        tr.try_partial_sign(&[payer], self.get_latest_blockhash().await)
+            .unwrap();
+        dbg!(self.process_transaction(tr).await)
     }
 
     pub async fn process_instruction(
