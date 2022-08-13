@@ -3,7 +3,6 @@ use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signature::Signer;
-use solana_sdk::system_instruction;
 use solana_sdk::system_program;
 use std::env;
 use std::io::Write;
@@ -67,32 +66,21 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
             rent_epoch: 100000000,
         },
     );
-
+    let instrs = builder
+        .input_instruction(solve_pubkey, 1, 5000)
+        .await
+        .unwrap();
     let mut challenge = builder.build().await;
+    challenge
+        .process_instructions_signed(&instrs, &user, &[&user])
+        .await
+        .unwrap();
     challenge.env.set_sysvar(&solana_sdk::sysvar::rent::Rent {
         lamports_per_byte_year: 0,
         exemption_threshold: 0.,
         burn_percent: 0,
     });
-    dbg!(challenge.env.banks_client.get_rent().await);
-    //Not cursed:
-    let res = challenge
-        .input_instruction_ext(solve_pubkey, &user, Some(&[&user]), |ixs| {
-            let min_lamports = 1_000;
-            let orig_len = ixs.len();
-            for account in ixs[0].accounts.clone().iter() {
-                ixs.push(system_instruction::transfer(
-                    &user.pubkey(),
-                    &account.pubkey,
-                    min_lamports,
-                ));
-            }
-            // put the original instruction(s) last
-            ixs.rotate_left(orig_len);
-            Ok(())
-        })
-        .await?;
-    dbg!(res);
+    dbg!(challenge.env.banks_client.get_rent().await).unwrap();
     let balance = challenge.get_balance(user.pubkey()).await.unwrap();
 
     writeln!(socket, "user bal: {:?}", balance)?;
