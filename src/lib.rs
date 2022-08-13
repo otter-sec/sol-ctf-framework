@@ -150,6 +150,81 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
             .add_account_with_base64_data(address, lamports, owner, b64);
         Ok(())
     }
+
+    pub async fn input_instruction(
+        &mut self,
+        program_id: Pubkey,
+        times: u64,
+        lamports: u64,
+    ) -> Result<Vec<Instruction>, Box<dyn Error>> {
+        let mut ixs = Vec::new();
+        for _ in 0..times {
+            let mut line = String::new();
+            writeln!(self.output, "num accounts: ")?;
+            self.input.read_line(&mut line)?;
+            if line == "" {
+                break;
+            }
+            let num_accounts: usize = line.trim().parse().unwrap();
+            let mut metas = vec![];
+            for _ in 0..num_accounts {
+                line.clear();
+                writeln!(self.output, "Ix: ").unwrap();
+                self.input.read_line(&mut line)?;
+
+                let mut it = line.trim().split(' ');
+                let meta = it.next().ok_or("bad meta");
+                let mut pubkey = || it.next().ok_or("Bad Public Key");
+                let pubkey = pubkey();
+                if pubkey == Err("Bad Public Key") {
+                    writeln!(self.output, "Bad Public Key!").unwrap();
+                } else {
+                    let pubkey = Pubkey::try_from(pubkey.unwrap()).unwrap();
+
+                    let is_signer = if meta.unwrap().find("s") != None {
+                        true
+                    } else {
+                        false
+                    };
+                    let is_writable = if meta.unwrap().find("w") != None {
+                        true
+                    } else {
+                        false
+                    };
+                    let is_executeable = if meta.unwrap().find("e") != None {
+                        true
+                    } else {
+                        false
+                    };
+                    if is_writable {
+                        metas.push(AccountMeta::new(pubkey, is_signer));
+                    } else {
+                        metas.push(AccountMeta::new_readonly(pubkey, is_signer));
+                    }
+                    self.add_account(
+                        pubkey,
+                        Account {
+                            lamports,
+                            data: vec![],
+                            owner: program_id,
+                            executable: is_executeable,
+                            rent_epoch: 100000000,
+                        },
+                    );
+                }
+            }
+            let mut line = String::new();
+            writeln!(self.output, "ix len: ")?;
+            self.input.read_line(&mut line)?;
+            let ix_data_len: usize = line.trim().parse().unwrap();
+            let mut ix_data = vec![0; ix_data_len];
+
+            self.input.read_exact(&mut ix_data)?;
+
+            ixs.push(Instruction::new_with_bytes(program_id, &ix_data, metas));
+        }
+        Ok(ixs)
+    }
 }
 
 impl<R: BufRead, W: Write> Challenge<R, W> {
@@ -196,11 +271,11 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         let mut tr: Transaction = Transaction::new_with_payer(instr, Some(&payer.pubkey()));
         for &signer in signers {
             let hash = self.get_latest_blockhash().await;
-            tr.sign(&[signer], hash)
+            tr.try_partial_sign(&[signer], hash).unwrap();
         }
-        tr.sign(&[payer], self.get_latest_blockhash().await);
-        dbg!(&tr);
-        self.process_transaction(tr).await
+        tr.try_partial_sign(&[payer], self.get_latest_blockhash().await)
+            .unwrap();
+        dbg!(self.process_transaction(tr).await)
     }
 
     pub async fn process_instruction(
@@ -209,10 +284,6 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
         payer: &Keypair,
     ) -> Result<(), BanksClientError> {
         self.process_instructions(&[instr], payer).await
-    }
-
-    pub async fn get_latest_blockhash(&mut self) -> Hash {
-        self.env.banks_client.get_latest_blockhash().await.unwrap()
     }
 
     pub async fn process_instruction_signed(
@@ -225,87 +296,8 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
             .await
     }
 
-    pub async fn input_instruction(
-        &mut self,
-        program_id: Pubkey,
-        payer: &Keypair,
-        signers: Option<&[&Keypair]>,
-    ) -> Result<(), Box<dyn Error>> {
-        self.input_instruction_ext(program_id, payer, signers, |_| Ok(()))
-            .await
-    }
-
-    pub async fn input_instruction_ext<F>(
-        &mut self,
-        program_id: Pubkey,
-        payer: &Keypair,
-        signers: Option<&[&Keypair]>,
-        modify_ix: F,
-    ) -> Result<(), Box<dyn Error>>
-    where
-        F: FnOnce(&mut Vec<Instruction>) -> Result<(), Box<dyn Error>>,
-    {
-        let mut line = String::new();
-        writeln!(self.output, "num accounts: ")?;
-        self.input.read_line(&mut line)?;
-        let num_accounts = || line.trim().parse();
-        if let Err(_err) = num_accounts() {
-            writeln!(self.output, "Invalid Number").unwrap();
-            return Ok(());
-        }
-        let num_accounts: usize = num_accounts().unwrap();
-        let mut metas = vec![];
-        for _ in 0..num_accounts {
-            line.clear();
-            writeln!(self.output, "Ix: ").unwrap();
-            self.input.read_line(&mut line)?;
-
-            let mut it = line.trim().split(' ');
-            let meta = it.next().ok_or("bad meta");
-            let mut pubkey = || it.next().ok_or("Bad Public Key");
-            let pubkey = pubkey();
-            if pubkey == Err("Bad Public Key") {
-                writeln!(self.output, "Bad Public Key!").unwrap();
-                return Ok(());
-            } else {
-                let pubkey = Pubkey::try_from(pubkey.unwrap()).unwrap();
-
-                let is_signer = if meta.unwrap().find("s") != None {
-                    true
-                } else {
-                    false
-                };
-                let is_writable = if meta.unwrap().find("w") != None {
-                    true
-                } else {
-                    false
-                };
-                if is_writable {
-                    metas.push(AccountMeta::new(pubkey, is_signer));
-                } else {
-                    metas.push(AccountMeta::new_readonly(pubkey, is_signer));
-                }
-            }
-        }
-
-        line.clear();
-        writeln!(self.output, "ix len: ")?;
-        self.input.read_line(&mut line)?;
-        let ix_data_len: usize = line.trim().parse().unwrap();
-        let mut ix_data = vec![0; ix_data_len];
-
-        self.input.read_exact(&mut ix_data)?;
-
-        let mut ixs = vec![Instruction::new_with_bytes(program_id, &ix_data, metas)];
-        modify_ix(&mut ixs)?;
-        match signers {
-            Some(signers) => {
-                self.process_instructions_signed(&ixs, payer, signers)
-                    .await?
-            }
-            None => self.process_instructions(&ixs, payer).await?,
-        }
-        Ok(())
+    pub async fn get_latest_blockhash(&mut self) -> Hash {
+        self.env.banks_client.get_latest_blockhash().await.unwrap()
     }
 }
 
