@@ -156,6 +156,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         program_id: Pubkey,
         times: u64,
         lamports: u64,
+        account_owner: Pubkey,
     ) -> Result<Vec<Instruction>, Box<dyn Error>> {
         let mut ixs = Vec::new();
         for _ in 0..times {
@@ -206,7 +207,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                         Account {
                             lamports,
                             data: vec![],
-                            owner: program_id,
+                            owner: account_owner,
                             executable: is_executeable,
                             rent_epoch: 100000000,
                         },
