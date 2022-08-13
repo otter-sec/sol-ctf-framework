@@ -67,7 +67,7 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
         },
     );
     let instrs = builder
-        .input_instruction(solve_pubkey, 1, 5000)
+        .input_instruction(solve_pubkey, 1, 5000, program_pubkey)
         .await
         .unwrap();
     let mut challenge = builder.build().await;
