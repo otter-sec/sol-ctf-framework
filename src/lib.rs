@@ -38,15 +38,18 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
     input: R,
     output: W,
     pub builder: ProgramTest,
+    pub accounts: Vec<Pubkey>,
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// New Challenge Environment
     pub fn new(input: R, output: W) -> ChallengeBuilder<R, W> {
+        let vector = Vec::new();
         ChallengeBuilder {
             input,
             output,
             builder: ProgramTest::default(),
+            accounts: vector,
         }
     }
 
@@ -123,6 +126,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// Takes an account and pubkey from input and adds it to the environment
     pub fn add_account(&mut self, keypair: Pubkey, account: Account) -> Pubkey {
         self.builder.add_account(keypair, account);
+        self.accounts.push(keypair);
         return keypair;
     }
 
@@ -202,16 +206,18 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                     } else {
                         metas.push(AccountMeta::new_readonly(pubkey, is_signer));
                     }
-                    self.add_account(
-                        pubkey,
-                        Account {
-                            lamports,
-                            data: vec![],
-                            owner: account_owner,
-                            executable: is_executeable,
-                            rent_epoch: 100000000,
-                        },
-                    );
+                    if self.accounts.iter().find(|x| x == &&pubkey) != None {
+                        self.add_account(
+                            pubkey,
+                            Account {
+                                lamports,
+                                data: vec![],
+                                owner: account_owner,
+                                executable: is_executeable,
+                                rent_epoch: 100000000,
+                            },
+                        );
+                    }
                 }
             }
             let mut line = String::new();
