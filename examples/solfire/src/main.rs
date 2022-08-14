@@ -35,6 +35,8 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     let program_pubkey = builder.add_chall_programs(&["solfire.so"]).await[0];
 
     let user = Keypair::new();
+    let payer = Keypair::new();
+
     writeln!(socket, "program pubkey: {}", program_pubkey)?;
     writeln!(socket, "solve pubkey: {}", solve_pubkey)?;
     writeln!(socket, "user pubkey: {}", user.pubkey())?;
@@ -42,7 +44,7 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     let (vault, _) = Pubkey::find_program_address(&["vault".as_ref()], &program_pubkey);
 
     const TARGET_AMT: u64 = 50_000;
-    const INIT_BAL: u64 = 5_000 + 10;
+    const INIT_BAL: u64 = 5_0000 + 10;
     const VAULT_BAL: u64 = 1_000_000;
 
     builder.add_account(
@@ -52,7 +54,18 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
             data: vec![],
             owner: system_program::id(),
             executable: false,
-            rent_epoch: 100000000,
+            rent_epoch: 1860482537,
+        },
+    );
+
+    builder.add_account(
+        payer.pubkey(),
+        Account {
+            lamports: INIT_BAL,
+            data: vec![],
+            owner: system_program::id(),
+            executable: false,
+            rent_epoch: 1860482537,
         },
     );
 
@@ -63,18 +76,23 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
             data: vec![],
             owner: system_program::id(),
             executable: false,
-            rent_epoch: 100000000,
+            rent_epoch: 1860482537,
         },
     );
+
     let instrs = builder
         .input_instruction(solve_pubkey, 1, 5000, program_pubkey)
         .await
         .unwrap();
     let mut challenge = builder.build().await;
+    let balance = challenge.get_balance(payer.pubkey()).await.unwrap();
+    println!("balace: {}", balance);
+
     challenge
-        .process_instructions_signed(&instrs, &user, &[&user])
+        .process_instructions_signed(&instrs, &payer, &[&user])
         .await
         .unwrap();
+
     challenge.env.set_sysvar(&solana_sdk::sysvar::rent::Rent {
         lamports_per_byte_year: 0,
         exemption_threshold: 0.,
