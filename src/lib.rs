@@ -161,9 +161,6 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     pub async fn input_instruction(
         &mut self,
         program_id: Pubkey,
-        times: u64,
-        lamports: u64,
-        account_owner: Pubkey,
     ) -> Result<Vec<Instruction>, Box<dyn Error>> {
         let mut ixs = Vec::new();
         for _ in 0..times {
