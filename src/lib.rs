@@ -6,7 +6,6 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signer::{keypair::Keypair, Signer},
-    sysvar::rent::Rent,
     transaction::Transaction,
 };
 use std::error::Error;
@@ -159,80 +158,73 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     pub async fn input_instruction(
         &mut self,
         program_id: Pubkey,
-        times: u64,
         lamports: u64,
-        account_owner: Pubkey,
     ) -> Result<Vec<Instruction>, Box<dyn Error>> {
         let mut ixs = Vec::new();
-        for _ in 0..times {
-            let mut line = String::new();
-            writeln!(self.output, "num accounts: ")?;
+        let mut line = String::new();
+        writeln!(self.output, "num accounts: ")?;
+        self.input.read_line(&mut line)?;
+        let num_accounts: usize = line.trim().parse().unwrap();
+        let mut metas = vec![];
+        for acno in 0..num_accounts {
+            line.clear();
+            writeln!(self.output, "Ix: ").unwrap();
             self.input.read_line(&mut line)?;
-            if line == "" {
-                break;
-            }
-            let num_accounts: usize = line.trim().parse().unwrap();
-            let mut metas = vec![];
-            for acno in 0..num_accounts {
-                line.clear();
-                writeln!(self.output, "Ix: ").unwrap();
-                self.input.read_line(&mut line)?;
 
-                let mut it = line.trim().split(' ');
-                let meta = it.next().ok_or("bad meta");
-                let mut pubkey = || it.next().ok_or("Bad Public Key");
-                let pubkey = pubkey();
-                if pubkey == Err("Bad Public Key") {
-                    writeln!(self.output, "Bad Public Key!").unwrap();
+            let mut it = line.trim().split(' ');
+            let meta = it.next().ok_or("bad meta");
+            let mut pubkey = || it.next().ok_or("Bad Public Key");
+            let pubkey = pubkey();
+            if pubkey == Err("Bad Public Key") {
+                writeln!(self.output, "Bad Public Key!").unwrap();
+            } else {
+                let pubkey = Pubkey::try_from(pubkey.unwrap()).unwrap();
+
+                let is_signer = if meta.unwrap().find("s") != None {
+                    true
                 } else {
-                    let pubkey = Pubkey::try_from(pubkey.unwrap()).unwrap();
+                    false
+                };
+                let is_writable = if meta.unwrap().find("w") != None {
+                    true
+                } else {
+                    false
+                };
+                let is_executeable = if meta.unwrap().find("e") != None {
+                    true
+                } else {
+                    false
+                };
+                if is_writable {
+                    metas.push(AccountMeta::new(pubkey, is_signer));
+                } else {
+                    metas.push(AccountMeta::new_readonly(pubkey, is_signer));
+                }
 
-                    let is_signer = if meta.unwrap().find("s") != None {
-                        true
-                    } else {
-                        false
-                    };
-                    let is_writable = if meta.unwrap().find("w") != None {
-                        true
-                    } else {
-                        false
-                    };
-                    let is_executeable = if meta.unwrap().find("e") != None {
-                        true
-                    } else {
-                        false
-                    };
-                    if is_writable {
-                        metas.push(AccountMeta::new(pubkey, is_signer));
-                    } else {
-                        metas.push(AccountMeta::new_readonly(pubkey, is_signer));
-                    }
-                    
-                    if acno == 10000 {
-                        let lamports = lamports + 1000000000000u64;
-                        self.add_account(
-                            pubkey,
-                            Account {
-                                lamports,
-                                data: vec![],
-                                owner: program_id,
-                                executable: is_executeable,
-                                rent_epoch: 10000000000,
-                            },
-                        );
-                    }
+                if acno == 10000 {
+                    let lamports = lamports + 1000000000000u64;
+                    self.add_account(
+                        pubkey,
+                        Account {
+                            lamports,
+                            data: vec![],
+                            owner: program_id,
+                            executable: is_executeable,
+                            rent_epoch: 10000000000,
+                        },
+                    );
                 }
             }
-            let mut line = String::new();
-            writeln!(self.output, "ix len: ")?;
-            self.input.read_line(&mut line)?;
-            let ix_data_len: usize = line.trim().parse().unwrap();
-            let mut ix_data = vec![0; ix_data_len];
-
-            self.input.read_exact(&mut ix_data)?;
-
-            ixs.push(Instruction::new_with_bytes(program_id, &ix_data, metas));
         }
+        let mut line = String::new();
+        writeln!(self.output, "ix len: ")?;
+        self.input.read_line(&mut line)?;
+        let ix_data_len: usize = line.trim().parse().unwrap();
+        let mut ix_data = vec![0; ix_data_len];
+
+        self.input.read_exact(&mut ix_data)?;
+
+        ixs.push(Instruction::new_with_bytes(program_id, &ix_data, metas));
         Ok(ixs)
     }
 }
