@@ -202,7 +202,6 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                 }
 
                 if acno == 10000 {
-                    let lamports = lamports + 1000000000000u64;
                     self.add_account(
                         pubkey,
                         Account {
