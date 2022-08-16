@@ -38,18 +38,18 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
     input: R,
     output: W,
     pub builder: ProgramTest,
-    //pub accounts: Vec<Pubkey>,
+    pub accounts: Vec<Pubkey>,
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// New Challenge Environment
     pub fn new(input: R, output: W) -> ChallengeBuilder<R, W> {
-        //let vector = Vec::new();
+        let vector = Vec::new();
         ChallengeBuilder {
             input,
             output,
             builder: ProgramTest::default(),
-            //accounts: vector,
+            accounts: vector,
         }
     }
 
@@ -81,17 +81,17 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     pub fn add_program(&mut self, path: &str, key: Pubkey) -> Pubkey {
         self.prefer_bpf(true);
         let data = read_file(&path);
+        let lamports = 10000000;
         self.add_account(
             key,
             Account {
-                lamports: Rent::default().minimum_balance(data.len()).min(1),
+                lamports: lamports,
                 data,
                 owner: solana_sdk::bpf_loader::id(),
                 executable: true,
                 rent_epoch: 0,
             },
         );
-        //self.accounts.push(key);
         return key;
     }
 
@@ -120,14 +120,14 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
             input_file.path().to_str().unwrap(),
             program_keypair.pubkey(),
         );
-        //self.accounts.push(program_keypair.pubkey());
+
         Ok(program_keypair.pubkey())
     }
 
     /// Takes an account and pubkey from input and adds it to the environment
     pub fn add_account(&mut self, keypair: Pubkey, account: Account) -> Pubkey {
         self.builder.add_account(keypair, account);
-        //self.accounts.push(keypair);
+        self.accounts.push(keypair);
         return keypair;
     }
 
@@ -141,7 +141,6 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     ) -> Result<(), ()> {
         self.builder
             .add_account_with_file_data(address, lamports, owner, filename);
-        //self.accounts.push(address);
         Ok(())
     }
 
@@ -154,13 +153,15 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     ) -> Result<(), ()> {
         self.builder
             .add_account_with_base64_data(address, lamports, owner, b64);
-        //self.accounts.push(address);
         Ok(())
     }
 
     pub async fn input_instruction(
         &mut self,
         program_id: Pubkey,
+        times: u64,
+        lamports: u64,
+        account_owner: Pubkey,
     ) -> Result<Vec<Instruction>, Box<dyn Error>> {
         let mut ixs = Vec::new();
         for _ in 0..times {
@@ -172,7 +173,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
             }
             let num_accounts: usize = line.trim().parse().unwrap();
             let mut metas = vec![];
-            for _ in 0..num_accounts {
+            for acno in 0..num_accounts {
                 line.clear();
                 writeln!(self.output, "Ix: ").unwrap();
                 self.input.read_line(&mut line)?;
@@ -206,18 +207,20 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                     } else {
                         metas.push(AccountMeta::new_readonly(pubkey, is_signer));
                     }
-                    //if self.accounts.iter().find(|x| x == &&pubkey) != None {
-                    //    self.add_account(
-                    //        pubkey,
-                    //        Account {
-                    //            lamports,
-                    //            data: vec![],
-                    //            owner: account_owner,
-                    //            executable: is_executeable,
-                    //            rent_epoch: 100000000,
-                    //        },
-                    //    );
-                    //}
+                    
+                    if acno == 10000 {
+                        let lamports = lamports + 1000000000000u64;
+                        self.add_account(
+                            pubkey,
+                            Account {
+                                lamports,
+                                data: vec![],
+                                owner: program_id,
+                                executable: is_executeable,
+                                rent_epoch: 10000000000,
+                            },
+                        );
+                    }
                 }
             }
             let mut line = String::new();

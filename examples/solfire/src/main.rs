@@ -43,9 +43,9 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
 
     let (vault, _) = Pubkey::find_program_address(&["vault".as_ref()], &program_pubkey);
 
-    const TARGET_AMT: u64 = 50_000;
-    const INIT_BAL: u64 = 5_0000 + 10;
-    const VAULT_BAL: u64 = 1_000_000;
+    const TARGET_AMT: u64 = 500000000;
+    const INIT_BAL: u64 = 5_00000000000 + 10;
+    const VAULT_BAL: u64 = 1_000_0000000000;
 
     builder.add_account(
         user.pubkey(),
@@ -81,7 +81,7 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     );
 
     let instrs = builder
-        .input_instruction(solve_pubkey)
+        .input_instruction(solve_pubkey, 1, 5000, program_pubkey)
         .await
         .unwrap();
     let mut challenge = builder.build().await;
