@@ -78,7 +78,11 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
             rent_epoch: 1860482537,
         },
     );
-
+    let rent = &solana_sdk::sysvar::rent::Rent {
+        lamports_per_byte_year: 0,
+        exemption_threshold: 0.,
+        burn_percent: 0,
+    };
     let instrs = builder.input_instruction(solve_pubkey, 5000).await.unwrap();
     let mut challenge = builder.build().await;
     challenge
@@ -86,11 +90,7 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
         .await
         .unwrap();
 
-    challenge.env.set_sysvar(&solana_sdk::sysvar::rent::Rent {
-        lamports_per_byte_year: 0,
-        exemption_threshold: 0.,
-        burn_percent: 0,
-    });
+    challenge.env.set_sysvar(rent);
     dbg!(challenge.env.banks_client.get_rent().await).unwrap();
     let balance = challenge.get_balance(user.pubkey()).await.unwrap();
 
