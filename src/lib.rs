@@ -190,7 +190,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
                 } else {
                     false
                 };
-                let is_executeable = if meta.unwrap().find("e") != None {
+                let is_executeable = if meta.unwrap().find("x") != None {
                     true
                 } else {
                     false
