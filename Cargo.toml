@@ -12,7 +12,9 @@ repository = "https://github.com/otter-sec/sol-ctf-framework"
 
 [dependencies]
 solana-sdk = "*"
+solana-program = "*"
 solana-program-test = "*"
+spl-token = "*"
 tempfile = "3.2.0"
 sha2 = "0.10.2"
 rand = "0.7.3"

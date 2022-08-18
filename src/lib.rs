@@ -5,9 +5,10 @@ use std::net::TcpStream;
 use std::str::FromStr;
 use std::fs::File;
 use solana_program_test::{ProgramTest, ProgramTestContext};
+use solana_sdk::signer::signers::Signers;
+use solana_sdk::{program_pack::Pack, signature::Signer, transaction::Transaction};
 
 use solana_sdk::{
-    signer::Signer,
     instruction::{AccountMeta, Instruction},
     signature::Keypair,
     pubkey::Pubkey,
@@ -34,7 +35,7 @@ mod helpers {
 pub struct Challenge<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub env: ProgramTestContext,
+    pub ctx: ProgramTestContext,
 }
 
 pub struct ChallengeBuilder<R: BufRead, W: Write> {
@@ -44,6 +45,7 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
+
     fn read_line(&mut self) -> Result<String, Box<dyn Error>> {
         let mut line = String::new();
         self.input.read_line(&mut line)?;
@@ -56,7 +58,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         Challenge {
             input: self.input,
             output: self.output,
-            env: self.builder.start_with_context().await,
+            ctx: self.builder.start_with_context().await,
         }
     }
 
@@ -111,6 +113,120 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
             builder,
         }
     }
+
+    pub async fn add_token_account(&mut self, mint: &Pubkey, owner: &Pubkey) -> Result<Pubkey, Box<dyn Error>> {
+    let token_account_keypair = Keypair::new();
+    let token_account = token_account_keypair.pubkey();
+    let payer = &self.ctx.payer;
+    let mut tx = Transaction::new_with_payer(
+        &[
+            solana_program::system_instruction::create_account(
+                &payer.pubkey(),
+                &token_account,
+                10000000,
+                spl_token::state::Account::LEN.try_into().unwrap(),
+                &spl_token::ID,
+            ),
+            spl_token::instruction::initialize_account(
+                &spl_token::ID,
+                &token_account,
+                &mint,
+                &owner
+            )?,
+        ],
+        Some(&payer.pubkey()),
+    );
+    tx.sign(&[&token_account_keypair, payer], self.ctx.last_blockhash);
+    self.ctx.banks_client
+        .process_transaction_with_preflight(tx)
+        .await?;
+
+    Ok(token_account)
+}
+
+pub async fn add_mint(&mut self) -> Result<Pubkey, Box<dyn Error>> {
+    let mint_keypair = Keypair::new();
+    let mint = mint_keypair.pubkey();
+    let payer = &self.ctx.payer;
+    let mut tx = Transaction::new_with_payer(
+        &[
+            solana_program::system_instruction::create_account(
+                &payer.pubkey(),
+                &mint,
+                10000000,
+                spl_token::state::Mint::LEN.try_into().unwrap(),
+                &spl_token::ID,
+            ),
+            spl_token::instruction::initialize_mint(
+                &spl_token::ID,
+                &mint,
+                &payer.pubkey(),
+                None,
+                9,
+            )?,
+        ],
+        Some(&payer.pubkey()),
+    );
+    tx.sign(&[&mint_keypair, payer], self.ctx.last_blockhash);
+    self.ctx.banks_client
+        .process_transaction_with_preflight(tx)
+        .await?;
+
+    Ok(mint)
+}
+
+    pub async fn mint_to(
+        &mut self,
+    amount: u64,
+    mint: &Pubkey,
+    account: &Pubkey,
+) -> Result<(), Box<dyn Error>> {
+    self.run_ix(
+        spl_token::instruction::mint_to(
+            &spl_token::ID,
+            mint,
+            account,
+            &self.ctx.payer.pubkey(),
+            &[],
+            amount,
+        )?,
+    )
+    .await
+}
+
+    pub async fn run_ixs(&mut self, ixs: &[Instruction]) -> Result<(), Box<dyn Error>> {
+        let payer_keypair = &self.ctx.payer;
+        let payer = payer_keypair.pubkey();
+        let mut tx = Transaction::new_with_payer(ixs, Some(&payer));
+
+        tx.sign(&[payer_keypair], self.ctx.last_blockhash);
+        self.ctx.banks_client
+            .process_transaction_with_preflight(tx)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn run_ix(&mut self, ix: Instruction) -> Result<(), Box<dyn Error>> {
+        self.run_ixs(&[ix]).await
+    }
+
+    pub async fn run_ixs_full<T: Signers>(&mut self, ixs: &[Instruction], signers: &T, payer: &Pubkey) -> Result<(), Box<dyn Error>> {
+    let mut tx = Transaction::new_with_payer(ixs, Some(payer));
+
+    tx.sign(signers, self.ctx.last_blockhash);
+    self.ctx.banks_client
+        .process_transaction_with_preflight(tx)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn read_token_account(&mut self, pubkey: Pubkey) -> Result<spl_token::state::Account, Box<dyn Error>> {
+    Ok(spl_token::state::Account::unpack(
+        &self.ctx.banks_client.get_account(pubkey).await?.unwrap().data
+    )?)
+}
 
     /// Reads instruction accounts/data from input and sends in transaction to specified program
     ///
