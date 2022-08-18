@@ -80,8 +80,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         let program_key = Pubkey::from_str(&self.read_line()?)?;
 
         writeln!(self.output, "program len: ")?;
-        let len: usize = self.read_line()?.parse()?;
-
+        let len: usize = std::cmp::min(10_000_000, self.read_line()?.parse()?);
 
         let mut input_so = vec![0; len];
         self.input.read_exact(&mut input_so)?;
