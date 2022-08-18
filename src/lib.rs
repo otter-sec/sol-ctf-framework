@@ -60,7 +60,7 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         let program_so = std::fs::read(path).unwrap();
         let program_key = key.unwrap_or(helpers::keypair_from_data(&program_so).pubkey());
 
-        self.builder.add_program(path.replace(".so", ""), program_key, None);
+        self.builder.add_program(&path.replace(".so", ""), program_key, None);
 
         program_key
     }
