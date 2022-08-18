@@ -3,6 +3,7 @@ use std::error::Error;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
+use std::fs::File;
 use solana_program_test::{ProgramTest, ProgramTestContext};
 
 use solana_sdk::{
@@ -12,7 +13,8 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use tempfile::NamedTempFile;
+use tempfile::Builder;
+
 
 mod helpers {
     use solana_sdk::signature::Keypair;
@@ -66,6 +68,11 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// Reads program from input and adds it to environment
     pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
         let mut line = String::new();
+
+        writeln!(self.output, "program pubkey: ")?;
+        self.input.read_line(&mut line)?;
+        let program_key = Pubkey::from_str(line.trim())?;
+
         writeln!(self.output, "program len: ")?;
         self.input.read_line(&mut line)?;
         let len: usize = line.trim().parse()?;
@@ -73,12 +80,17 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         let mut input_so = vec![0; len];
         self.input.read_exact(&mut input_so)?;
 
-        let mut input_file = NamedTempFile::new()?;
+        let dir = Builder::new()
+            .prefix("my-temporary-dir")
+            .rand_bytes(5)
+            .tempdir()?;
+
+        let file_path = dir.path().join("solve.so");
+        let mut input_file = File::create(file_path.clone())?;
+
         input_file.write_all(&input_so)?;
 
-        let program_key = helpers::keypair_from_data(&input_so).pubkey();
-        self.builder
-            .add_program(&input_file.path().to_str().unwrap(), program_key, None);
+        self.add_program(&file_path.to_str().unwrap(), Some(program_key));
 
         Ok(program_key)
     }
