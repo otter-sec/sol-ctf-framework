@@ -3,20 +3,19 @@ use std::error::Error;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
+use solana_program_test::{ProgramTest, ProgramTestContext};
 
-use poc_framework_osec::solana_sdk::signer::Signer;
-
-use poc_framework_osec::solana_sdk::instruction::{AccountMeta, Instruction};
-use poc_framework_osec::solana_sdk::signature::Keypair;
-use poc_framework_osec::LocalEnvironmentBuilder;
-use poc_framework_osec::{
-    solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction,
-    Environment, LocalEnvironment,
+use solana_sdk::{
+    signer::Signer,
+    instruction::{AccountMeta, Instruction},
+    signature::Keypair,
+    pubkey::Pubkey,
 };
+
 use tempfile::NamedTempFile;
 
 mod helpers {
-    use poc_framework_osec::solana_sdk::signature::Keypair;
+    use solana_sdk::signature::Keypair;
     use rand::{prelude::StdRng, SeedableRng};
     use sha2::{Digest, Sha256};
 
@@ -33,39 +32,35 @@ mod helpers {
 pub struct Challenge<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub env: LocalEnvironment,
+    pub env: ProgramTestContext,
 }
 
 pub struct ChallengeBuilder<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub builder: LocalEnvironmentBuilder,
+    pub builder: ProgramTest,
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// Build challenge environment
-    pub fn build(mut self) -> Challenge<R, W> {
+    pub async fn build(self) -> Challenge<R, W> {
         Challenge {
             input: self.input,
             output: self.output,
-            env: self.builder.build(),
+            env: self.builder.start_with_context().await,
         }
     }
 
     /// Adds programs to challenge environment
     ///
     /// Returns vector of program pubkeys, with positions corresponding to input slice
-    pub fn chall_programs(&mut self, programs: &[&str]) -> Vec<Pubkey> {
-        let mut keys = vec![];
-        for &path in programs {
-            let program_so = std::fs::read(path).unwrap();
-            let program_keypair = helpers::keypair_from_data(&program_so);
+    pub fn add_program(&mut self, path: &str, key: Option<Pubkey>) -> Pubkey {
+        let program_so = std::fs::read(path).unwrap();
+        let program_key = key.unwrap_or(helpers::keypair_from_data(&program_so).pubkey());
 
-            self.builder.add_program(program_keypair.pubkey(), path);
-            keys.push(program_keypair.pubkey());
-        }
+        self.builder.add_program(path, program_key, None);
 
-        keys
+        program_key
     }
 
     /// Reads program from input and adds it to environment
@@ -81,17 +76,19 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         let mut input_file = NamedTempFile::new()?;
         input_file.write_all(&input_so)?;
 
-        let program_keypair = helpers::keypair_from_data(&input_so);
+        let program_key = helpers::keypair_from_data(&input_so).pubkey();
         self.builder
-            .add_program(program_keypair.pubkey(), input_file);
+            .add_program(&input_file.path().to_str().unwrap(), program_key, None);
 
-        Ok(program_keypair.pubkey())
+        Ok(program_key)
     }
 }
 
 impl<R: BufRead, W: Write> Challenge<R, W> {
     pub fn builder(input: R, output: W) -> ChallengeBuilder<R, W> {
-        let builder = LocalEnvironment::builder();
+        let mut builder = ProgramTest::default();
+        builder.prefer_bpf(true);
+
         ChallengeBuilder {
             input,
             output,
@@ -106,11 +103,10 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
     ///
     /// `[meta]` - contains "s" if account is a signer, "w" if it is writable
     /// `[pubkey]` - the address of the account
-    pub fn input_instruction(
+    pub fn read_instruction(
         &mut self,
         program_id: Pubkey,
-        signers: &[&Keypair],
-    ) -> Result<EncodedConfirmedTransaction, Box<dyn Error>> {
+    ) -> Result<Instruction, Box<dyn Error>> {
         let mut line = String::new();
         writeln!(self.output, "num accounts: ")?;
         self.input.read_line(&mut line)?;
@@ -146,7 +142,7 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
 
         let ix = Instruction::new_with_bytes(program_id, &ix_data, metas);
 
-        Ok(self.env.execute_as_transaction(&[ix], signers))
+        Ok(ix)
     }
 }
 
