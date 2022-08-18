@@ -1,37 +1,41 @@
-use poc_framework_osec::solana_sdk::signature::Keypair;
-use poc_framework_osec::solana_sdk::signature::Signer;
-use poc_framework_osec::Environment;
 use sol_ctf_framework::ChallengeBuilder;
-use solana_program::pubkey::Pubkey;
-use solana_program::system_program;
+use solana_sdk::account::Account;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Keypair;
+use solana_sdk::signature::Signer;
+use solana_sdk::system_program;
 use std::env;
 use std::io::Write;
 use std::{
     error::Error,
     net::{TcpListener, TcpStream},
 };
-use threadpool::ThreadPool;
+use tokio;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind("0.0.0.0:8080")?;
-    let pool = ThreadPool::new(4);
+    println!("Listener Created!");
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-
-        pool.execute(|| {
-            handle_connection(stream).unwrap();
-        });
+        let handle = || handle_connection(stream);
+        if let Err(_err) = handle().await {
+            println!("Error {:?}", _err);
+        }
+        //handle().await;
+        println!("Connection Recieved and Handled!")
     }
     Ok(())
 }
 
-fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut builder = ChallengeBuilder::try_from(socket.try_clone().unwrap()).unwrap();
-
-    let solve_pubkey = builder.input_program().unwrap();
-    let program_pubkey = builder.chall_programs(&["./examples/solfire/solfire.so"])[0];
+    builder.prefer_bpf(true);
+    let solve_pubkey = builder.input_program().await?;
+    let program_pubkey = builder.add_chall_programs(&["solfire.so"]).await[0];
 
     let user = Keypair::new();
+    let payer = Keypair::new();
 
     writeln!(socket, "program pubkey: {}", program_pubkey)?;
     writeln!(socket, "solve pubkey: {}", solve_pubkey)?;
@@ -39,28 +43,62 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
 
     let (vault, _) = Pubkey::find_program_address(&["vault".as_ref()], &program_pubkey);
 
-    const TARGET_AMT: u64 = 50_000;
-    const INIT_BAL: u64 = 10;
-    const VAULT_BAL: u64 = 1_000_000;
+    const TARGET_AMT: u64 = 5000000;
+    const INIT_BAL: u64 = 5_000000000 + 10;
+    const VAULT_BAL: u64 = 1_000_00000000;
+    builder.add_account(
+        user.pubkey(),
+        Account {
+            lamports: INIT_BAL,
+            data: vec![],
+            owner: system_program::id(),
+            executable: false,
+            rent_epoch: 1860482537,
+        },
+    );
 
-    builder
-        .builder
-        .add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
-    builder
-        .builder
-        .add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
+    builder.add_account(
+        payer.pubkey(),
+        Account {
+            lamports: INIT_BAL,
+            data: vec![],
+            owner: system_program::id(),
+            executable: false,
+            rent_epoch: 1860482537,
+        },
+    );
 
-    let mut challenge = builder.build();
+    builder.add_account(
+        vault,
+        Account {
+            lamports: VAULT_BAL,
+            data: vec![],
+            owner: system_program::id(),
+            executable: false,
+            rent_epoch: 1860482537,
+        },
+    );
+    let rent = &solana_sdk::sysvar::rent::Rent {
+        lamports_per_byte_year: 0,
+        exemption_threshold: 0.,
+        burn_percent: 0,
+    };
+    let instrs = builder.input_instruction(solve_pubkey, 5000).await.unwrap();
+    let mut challenge = builder.build().await;
+    challenge
+        .process_instructions_signed(&instrs, &payer, &[&user])
+        .await
+        .unwrap();
 
-    challenge.input_instruction(solve_pubkey, &[&user]).unwrap();
-
-    let balance = challenge.env.get_account(user.pubkey()).unwrap().lamports;
+    challenge.env.set_sysvar(rent);
+    dbg!(challenge.env.banks_client.get_rent().await).unwrap();
+    let balance = challenge.get_balance(user.pubkey()).await.unwrap();
 
     writeln!(socket, "user bal: {:?}", balance)?;
     writeln!(
         socket,
         "vault bal: {:?}",
-        challenge.env.get_account(vault).unwrap().lamports
+        challenge.get_balance(vault).await.unwrap()
     )?;
 
     if balance > TARGET_AMT {

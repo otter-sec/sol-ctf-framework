@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: BSD-3-Clause
+use solana_program_test::{read_file, BanksClientError, ProgramTest, ProgramTestContext};
+use solana_sdk::{
+    account::Account,
+    hash::Hash,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signer::{keypair::Keypair, Signer},
+    transaction::Transaction,
+};
 use std::error::Error;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
-use std::str::FromStr;
-
-use poc_framework_osec::solana_sdk::signer::Signer;
-
-use poc_framework_osec::solana_sdk::instruction::{AccountMeta, Instruction};
-use poc_framework_osec::solana_sdk::signature::Keypair;
-use poc_framework_osec::LocalEnvironmentBuilder;
-use poc_framework_osec::{
-    solana_sdk::pubkey::Pubkey, solana_transaction_status::EncodedConfirmedTransaction,
-    Environment, LocalEnvironment,
-};
 use tempfile::NamedTempFile;
 
 mod helpers {
-    use poc_framework_osec::solana_sdk::signature::Keypair;
+    use crate::Keypair;
     use rand::{prelude::StdRng, SeedableRng};
     use sha2::{Digest, Sha256};
-
     pub fn keypair_from_data(data: &[u8]) -> Keypair {
         let mut hash = Sha256::default();
         hash.update(&data);
@@ -33,48 +30,83 @@ mod helpers {
 pub struct Challenge<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub env: LocalEnvironment,
+    pub env: ProgramTestContext,
 }
 
 pub struct ChallengeBuilder<R: BufRead, W: Write> {
     input: R,
     output: W,
-    pub builder: LocalEnvironmentBuilder,
+    pub builder: ProgramTest,
+    pub accounts: Vec<Pubkey>,
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
+    /// New Challenge Environment
+    pub fn new(input: R, output: W) -> ChallengeBuilder<R, W> {
+        let vector = Vec::new();
+        ChallengeBuilder {
+            input,
+            output,
+            builder: ProgramTest::default(),
+            accounts: vector,
+        }
+    }
+
     /// Build challenge environment
-    pub fn build(mut self) -> Challenge<R, W> {
+    pub async fn build(self) -> Challenge<R, W> {
         Challenge {
             input: self.input,
             output: self.output,
-            env: self.builder.build(),
+            env: self.builder.start_with_context().await,
         }
     }
 
     /// Adds programs to challenge environment
     ///
     /// Returns vector of program pubkeys, with positions corresponding to input slice
-    pub fn chall_programs(&mut self, programs: &[&str]) -> Vec<Pubkey> {
+    pub async fn add_chall_programs(&mut self, programs: &[&str]) -> Vec<Pubkey> {
         let mut keys = vec![];
         for &path in programs {
             let program_so = std::fs::read(path).unwrap();
             let program_keypair = helpers::keypair_from_data(&program_so);
-
-            self.builder.add_program(program_keypair.pubkey(), path);
             keys.push(program_keypair.pubkey());
+            self.add_program(path, program_keypair.pubkey());
         }
 
         keys
     }
 
+    /// Adds a program to the challenge environment
+    pub fn add_program(&mut self, path: &str, key: Pubkey) -> Pubkey {
+        self.prefer_bpf(true);
+        let data = read_file(&path);
+        let lamports = 10000000;
+        self.add_account(
+            key,
+            Account {
+                lamports: lamports,
+                data,
+                owner: solana_sdk::bpf_loader::id(),
+                executable: true,
+                rent_epoch: 0,
+            },
+        );
+        return key;
+    }
+
+    pub fn prefer_bpf(&mut self, opt: bool) {
+        self.builder.prefer_bpf(opt);
+    }
+
     /// Reads program from input and adds it to environment
-    pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
+    pub async fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
         let mut line = String::new();
         writeln!(self.output, "program len: ")?;
         self.input.read_line(&mut line)?;
-        let len: usize = line.trim().parse()?;
-
+        let mut len: usize = line.trim().parse()?;
+        if len > 100000 {
+            len = 100000
+        }
         let mut input_so = vec![0; len];
         self.input.read_exact(&mut input_so)?;
 
@@ -82,71 +114,191 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         input_file.write_all(&input_so)?;
 
         let program_keypair = helpers::keypair_from_data(&input_so);
-        self.builder
-            .add_program(program_keypair.pubkey(), input_file);
+        self.prefer_bpf(true);
+        let _program = self.add_program(
+            input_file.path().to_str().unwrap(),
+            program_keypair.pubkey(),
+        );
 
         Ok(program_keypair.pubkey())
     }
-}
 
-impl<R: BufRead, W: Write> Challenge<R, W> {
-    pub fn builder(input: R, output: W) -> ChallengeBuilder<R, W> {
-        let builder = LocalEnvironment::builder();
-        ChallengeBuilder {
-            input,
-            output,
-            builder,
-        }
+    /// Takes an account and pubkey from input and adds it to the environment
+    pub fn add_account(&mut self, keypair: Pubkey, account: Account) -> Pubkey {
+        self.builder.add_account(keypair, account);
+        self.accounts.push(keypair);
+        return keypair;
     }
 
-    /// Reads instruction accounts/data from input and sends in transaction to specified program
-    ///
-    /// # Account Format:
-    /// `[meta] [pubkey]`
-    ///
-    /// `[meta]` - contains "s" if account is a signer, "w" if it is writable
-    /// `[pubkey]` - the address of the account
-    pub fn input_instruction(
+    /// Takes an address pubkey, number of starting lamports, owner pubkey, and a filename from input, then adds an account with that data to the builder
+    pub async fn add_account_with_file_data(
+        &mut self,
+        address: Pubkey,
+        lamports: u64,
+        owner: Pubkey,
+        filename: &str,
+    ) -> Result<(), ()> {
+        self.builder
+            .add_account_with_file_data(address, lamports, owner, filename);
+        Ok(())
+    }
+
+    pub async fn add_account_with_base64_data(
+        &mut self,
+        address: Pubkey,
+        lamports: u64,
+        owner: Pubkey,
+        b64: &str,
+    ) -> Result<(), ()> {
+        self.builder
+            .add_account_with_base64_data(address, lamports, owner, b64);
+        Ok(())
+    }
+
+    pub async fn input_instruction(
         &mut self,
         program_id: Pubkey,
-        signers: &[&Keypair],
-    ) -> Result<EncodedConfirmedTransaction, Box<dyn Error>> {
+        lamports: u64,
+    ) -> Result<Vec<Instruction>, Box<dyn Error>> {
+        let mut ixs = Vec::new();
         let mut line = String::new();
         writeln!(self.output, "num accounts: ")?;
         self.input.read_line(&mut line)?;
-        let num_accounts: usize = line.trim().parse()?;
-
+        let num_accounts: usize = line.trim().parse().unwrap();
         let mut metas = vec![];
-        for _ in 0..num_accounts {
+        for acno in 0..num_accounts {
             line.clear();
+            writeln!(self.output, "Ix: ").unwrap();
             self.input.read_line(&mut line)?;
 
             let mut it = line.trim().split(' ');
-            let meta = it.next().ok_or("bad meta")?;
-            let pubkey = it.next().ok_or("bad pubkey")?;
-            let pubkey = Pubkey::from_str(pubkey)?;
-
-            let is_signer = meta.contains('s');
-            let is_writable = meta.contains('w');
-
-            if is_writable {
-                metas.push(AccountMeta::new(pubkey, is_signer));
+            let meta = it.next().ok_or("bad meta");
+            let mut pubkey = || it.next().ok_or("Bad Public Key");
+            let pubkey = pubkey();
+            if pubkey == Err("Bad Public Key") {
+                writeln!(self.output, "Bad Public Key!").unwrap();
             } else {
-                metas.push(AccountMeta::new_readonly(pubkey, is_signer));
+                let pubkey = Pubkey::try_from(pubkey.unwrap()).unwrap();
+
+                let is_signer = if meta.unwrap().find("s") != None {
+                    true
+                } else {
+                    false
+                };
+                let is_writable = if meta.unwrap().find("w") != None {
+                    true
+                } else {
+                    false
+                };
+                let is_executeable = if meta.unwrap().find("x") != None {
+                    true
+                } else {
+                    false
+                };
+                if is_writable {
+                    metas.push(AccountMeta::new(pubkey, is_signer));
+                } else {
+                    metas.push(AccountMeta::new_readonly(pubkey, is_signer));
+                }
+
+                if acno == 10000 {
+                    self.add_account(
+                        pubkey,
+                        Account {
+                            lamports,
+                            data: vec![],
+                            owner: program_id,
+                            executable: is_executeable,
+                            rent_epoch: 10000000000,
+                        },
+                    );
+                }
             }
         }
-
-        line.clear();
+        let mut line = String::new();
         writeln!(self.output, "ix len: ")?;
         self.input.read_line(&mut line)?;
-        let ix_data_len: usize = line.trim().parse()?;
+        let ix_data_len: usize = line.trim().parse().unwrap();
         let mut ix_data = vec![0; ix_data_len];
 
         self.input.read_exact(&mut ix_data)?;
 
-        let ix = Instruction::new_with_bytes(program_id, &ix_data, metas);
+        ixs.push(Instruction::new_with_bytes(program_id, &ix_data, metas));
+        Ok(ixs)
+    }
+}
 
-        Ok(self.env.execute_as_transaction(&[ix], signers))
+impl<R: BufRead, W: Write> Challenge<R, W> {
+    /// Reads a transaction as input, and executes it
+    pub async fn process_transaction(&mut self, tr: Transaction) -> Result<(), BanksClientError> {
+        self.env
+            .banks_client
+            .process_transaction_with_preflight(tr)
+            .await
+    }
+
+    /// Reads a vector of transactions as input and executes them
+    pub async fn process_transactions(
+        &mut self,
+        trs: &[Transaction],
+    ) -> Result<(), BanksClientError> {
+        for tr in trs.to_vec() {
+            let _res = self.process_transaction(tr).await;
+        }
+        Ok(())
+    }
+
+    /// Gets an account balance from Pubkey
+    pub async fn get_balance(&mut self, key: Pubkey) -> Result<u64, BanksClientError> {
+        self.env.banks_client.get_balance(key).await
+    }
+
+    pub async fn process_instructions(
+        &mut self,
+        instr: &[Instruction],
+        payer: &Keypair,
+    ) -> Result<(), BanksClientError> {
+        let mut tr: Transaction = Transaction::new_with_payer(instr, Some(&payer.pubkey()));
+        tr.sign(&[payer], self.get_latest_blockhash().await);
+        self.process_transaction(tr).await
+    }
+
+    pub async fn process_instructions_signed(
+        &mut self,
+        instr: &[Instruction],
+        payer: &Keypair,
+        signers: &[&Keypair],
+    ) -> Result<(), BanksClientError> {
+        let mut tr: Transaction = Transaction::new_with_payer(instr, Some(&payer.pubkey()));
+        for &signer in signers {
+            let hash = self.get_latest_blockhash().await;
+            tr.try_partial_sign(&[signer], hash).unwrap();
+        }
+        tr.try_partial_sign(&[payer], self.get_latest_blockhash().await)
+            .unwrap();
+        dbg!(self.process_transaction(tr).await)
+    }
+
+    pub async fn process_instruction(
+        &mut self,
+        instr: Instruction,
+        payer: &Keypair,
+    ) -> Result<(), BanksClientError> {
+        self.process_instructions(&[instr], payer).await
+    }
+
+    pub async fn process_instruction_signed(
+        &mut self,
+        instr: Instruction,
+        payer: &Keypair,
+        signers: &[&Keypair],
+    ) -> Result<(), BanksClientError> {
+        self.process_instructions_signed(&[instr], payer, signers)
+            .await
+    }
+
+    pub async fn get_latest_blockhash(&mut self) -> Hash {
+        self.env.banks_client.get_latest_blockhash().await.unwrap()
     }
 }
 
@@ -155,6 +307,6 @@ impl TryFrom<TcpStream> for ChallengeBuilder<BufReader<TcpStream>, TcpStream> {
 
     fn try_from(socket: TcpStream) -> Result<Self, Self::Error> {
         let reader = BufReader::new(socket.try_clone()?);
-        Ok(Challenge::builder(reader, socket))
+        Ok(ChallengeBuilder::new(reader, socket))
     }
 }
