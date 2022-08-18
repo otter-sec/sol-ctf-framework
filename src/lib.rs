@@ -44,6 +44,13 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
+    fn read_line(&mut self) -> Result<String, Box<dyn Error>> {
+        let mut line = String::new();
+        self.input.read_line(&mut line)?;
+
+        Ok(line.replace("\n", ""))
+    }
+
     /// Build challenge environment
     pub async fn build(self) -> Challenge<R, W> {
         Challenge {
@@ -67,15 +74,12 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
 
     /// Reads program from input and adds it to environment
     pub fn input_program(&mut self) -> Result<Pubkey, Box<dyn Error>> {
-        let mut line = String::new();
-
         writeln!(self.output, "program pubkey: ")?;
-        self.input.read_line(&mut line)?;
-        let program_key = Pubkey::from_str(line.trim())?;
+        let program_key = Pubkey::from_str(&self.read_line()?)?;
 
         writeln!(self.output, "program len: ")?;
-        self.input.read_line(&mut line)?;
-        let len: usize = line.trim().parse()?;
+        let len: usize = self.read_line()?.parse()?;
+
 
         let mut input_so = vec![0; len];
         self.input.read_exact(&mut input_so)?;
