@@ -6,11 +6,11 @@ use std::str::FromStr;
 use std::fs::File;
 use solana_program_test::{ProgramTest, ProgramTestContext};
 use solana_sdk::signer::signers::Signers;
-use solana_sdk::{program_pack::Pack, signature::Signer, transaction::Transaction};
+use solana_sdk::{program_pack::Pack, transaction::Transaction};
 
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
-    signature::Keypair,
+    signature::{Keypair, Signer},
     pubkey::Pubkey,
 };
 
@@ -69,7 +69,10 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
         let program_so = std::fs::read(path).unwrap();
         let program_key = key.unwrap_or(helpers::keypair_from_data(&program_so).pubkey());
 
-        self.builder.add_program(&path.replace(".so", ""), program_key, None);
+        let name_owned = path.trim_end_matches(".so").to_owned();
+        let name_static: &'static str = Box::leak(name_owned.into_boxed_str());
+
+        self.builder.add_program(name_static, program_key, None);
 
         program_key
     }
