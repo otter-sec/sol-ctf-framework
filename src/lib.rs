@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: BSD-3-Clause
-use std::error::Error;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
-use std::str::FromStr;
 use std::fs::File;
+use std::error::Error;
+use std::str::FromStr;
+use std::net::TcpStream;
+use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Write};
+
 use solana_program_test::{ProgramTest, ProgramTestContext};
+
 use solana_sdk::signer::signers::Signers;
 use solana_sdk::{program_pack::Pack, transaction::Transaction};
-
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     signature::{Keypair, Signer},
@@ -15,7 +17,6 @@ use solana_sdk::{
 };
 
 use tempfile::Builder;
-
 
 mod helpers {
     use solana_sdk::signature::Keypair;
@@ -42,6 +43,7 @@ pub struct ChallengeBuilder<R: BufRead, W: Write> {
     input: R,
     output: W,
     pub builder: ProgramTest,
+    added_programs: HashSet<Pubkey>,
 }
 
 impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
@@ -65,16 +67,21 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
     /// Adds programs to challenge environment
     ///
     /// Returns vector of program pubkeys, with positions corresponding to input slice
-    pub fn add_program(&mut self, path: &str, key: Option<Pubkey>) -> Pubkey {
+    pub fn add_program(&mut self, path: &str, key: Option<Pubkey>) -> Option<Pubkey> {
         let program_so = std::fs::read(path).unwrap();
         let program_key = key.unwrap_or(helpers::keypair_from_data(&program_so).pubkey());
 
         let name_owned = path.trim_end_matches(".so").to_owned();
         let name_static: &'static str = Box::leak(name_owned.into_boxed_str());
 
+        // Prevent duplicate program IDs
+        if !self.added_programs.insert(program_key) {
+            return None;
+        }
+
         self.builder.add_program(name_static, program_key, None);
 
-        program_key
+        Some(program_key)
     }
 
     /// Reads program from input and adds it to environment
@@ -98,9 +105,10 @@ impl<R: BufRead, W: Write> ChallengeBuilder<R, W> {
 
         input_file.write_all(&input_so)?;
 
-        self.add_program(&file_path.to_str().unwrap(), Some(program_key));
-
-        Ok(program_key)
+        match self.add_program(&file_path.to_str().unwrap(), Some(program_key)) {
+            Some(program_key) => Ok(program_key),  
+            None => Err("Duplicate pubkey supplied".into()),        
+        }   
     }
 }
 
@@ -113,6 +121,7 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
             input,
             output,
             builder,
+            added_programs: HashSet::new(),
         }
     }
 
