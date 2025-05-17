@@ -1,6 +1,5 @@
-use poc_framework_osec::solana_sdk::signature::Keypair;
-use poc_framework_osec::solana_sdk::signature::Signer;
-use poc_framework_osec::Environment;
+use solana_sdk::signature::Keypair;
+use solana_sdk::signature::Signer;
 use sol_ctf_framework::ChallengeBuilder;
 use solana_program::pubkey::Pubkey;
 use solana_program::system_program;
@@ -28,7 +27,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut builder = ChallengeBuilder::try_from(socket.try_clone().unwrap()).unwrap();
 
-    let solve_pubkey = builder.input_program().unwrap();
+    let solve_pubkey = match builder.input_program() {
+        Ok(pubkey) => pubkey,
+        Err(e) => {
+            writeln!(socket, "Error: cannot add solve program → {e}")?;
+            return Ok(());
+        }
+    };
     let program_pubkey = builder.chall_programs(&["./examples/solfire/solfire.so"])[0];
 
     let user = Keypair::new();

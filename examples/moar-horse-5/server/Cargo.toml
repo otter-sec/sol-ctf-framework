@@ -4,8 +4,11 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-sol-ctf-framework = "0.1.0"
-poc-framework-osec = "0.1.1"
-solana-program = "1.8.14"
+sol-ctf-framework =  { version = "0.1.0", path = "../../../" }
+solana-sdk = "2.2.2"
+solana-program = "=2.2.1"
+solana-program-test = "2.2.7"
+spl-token = "=8.0.0"
 threadpool = "1.8.1"
 moar-horse = { version = "1.0.0", path = "../program" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

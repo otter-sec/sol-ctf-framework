@@ -1,4 +1,4 @@
-use borsh::BorshSerialize;
+use borsh::{BorshSerialize, to_vec};
 
 use solana_program::{
   account_info::{
@@ -35,7 +35,7 @@ pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &
         AccountMeta::new(*user.key, true),
         AccountMeta::new_readonly(system_program::id(), false),
       ],
-      data: HorseInstruction::Buy { amount }.try_to_vec().unwrap(),
+      data: to_vec(&HorseInstruction::Buy { amount }).unwrap(),
     },
     &[horse.clone(), wallet.clone(), user.clone()],
   )?;
@@ -49,7 +49,7 @@ pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &
         AccountMeta::new(*user.key, true),
         AccountMeta::new_readonly(system_program::id(), false),
       ],
-      data: HorseInstruction::Sell { amount: 100 }.try_to_vec().unwrap(),
+      data: to_vec(&HorseInstruction::Sell { amount: 100 }).unwrap(),
     },
     &[horse.clone(), wallet.clone(), user.clone()],
   )?;

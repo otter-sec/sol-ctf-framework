@@ -4,6 +4,7 @@ pub mod processor;
 use borsh::{
   BorshDeserialize,
   BorshSerialize,
+  to_vec,
 };
 
 use solana_program::{
@@ -11,8 +12,8 @@ use solana_program::{
     AccountMeta,
     Instruction,
   },
-  pubkey::Pubkey,
   system_program,
+  pubkey::Pubkey,
 };
 
 use std::mem::size_of;
@@ -55,7 +56,7 @@ pub fn create(program: Pubkey, user: Pubkey) -> Instruction {
       AccountMeta::new(user, true),
       AccountMeta::new_readonly(system_program::id(), false),
     ],
-    data: HorseInstruction::Create { horse_bump, wallet_bump } .try_to_vec().unwrap(),
+    data: to_vec(&HorseInstruction::Create { horse_bump, wallet_bump }).unwrap(),
   }
 }
 
@@ -70,7 +71,7 @@ pub fn buy(program: Pubkey, user: Pubkey, amount: u64) -> Instruction {
       AccountMeta::new(user, true),
       AccountMeta::new_readonly(system_program::id(), false),
     ],
-    data: HorseInstruction::Buy { amount }.try_to_vec().unwrap(),
+    data: to_vec(&HorseInstruction::Buy { amount }).unwrap(),
   }
 }
 
@@ -85,6 +86,6 @@ pub fn sell(program: Pubkey, user: Pubkey, amount: u64) -> Instruction {
       AccountMeta::new(user, true),
       AccountMeta::new_readonly(system_program::id(), false),
     ],
-    data: HorseInstruction::Sell { amount }.try_to_vec().unwrap(),
+    data: to_vec(&HorseInstruction::Sell { amount }).unwrap(),
   }
 }

@@ -1,12 +1,10 @@
-use poc_framework_osec::{
-    solana_sdk::signature::{
-        Keypair,
-        Signer,
-    },
-    Environment,
-};
-
 use sol_ctf_framework::ChallengeBuilder;
+
+use solana_sdk::{
+    pubkey::Pubkey,
+    account::Account,
+    signature::{Keypair, Signer},
+};
 
 use solana_program::system_program;
 
@@ -20,31 +18,37 @@ use std::{
     },
 };
 
-use threadpool::ThreadPool;
-
 use moar_horse::{
     create, get_horse,
 };
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind("0.0.0.0:5000")?;
-    let pool = ThreadPool::new(4);
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        pool.execute(|| {
-            handle_connection(stream).unwrap();
+#[tokio::main]  
+async fn main() -> Result<(), Box<dyn Error>> {
+    let listener = TcpListener::bind("0.0.0.0:5001")?;
+    loop {
+        let (stream, _) = listener.accept()?;
+        // move each socket to a Tokio task
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(stream).await {
+                eprintln!("handler error: {e}");
+            }
         });
     }
-    Ok(())
 }
 
-fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut builder = ChallengeBuilder::try_from(socket.try_clone().unwrap()).unwrap();
 
     // load programs
-    let solve_pubkey = builder.input_program().unwrap();
-    let program_pubkey = builder.chall_programs(&["./moar_horse.so"])[0];
+    let solve_pubkey = match builder.input_program() {
+        Ok(pubkey) => pubkey,
+        Err(e) => {
+            writeln!(socket, "Error: cannot add solve program → {e}")?;
+            return Ok(());
+        }
+    };
+    let program_key = Pubkey::new_unique();
+    let program_pubkey = builder.add_program(&"../challenge/moar_horse.so", Some(program_key)).expect("Duplicate pubkey supplied");
 
     // make user
     let user = Keypair::new();
@@ -56,30 +60,36 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
     // add accounts and lamports
     let (horse, _) = get_horse(program_pubkey);
 
-    const TARGET_AMT: u64 = 100_000;
-    const INIT_BAL: u64 = 2_000;
-    const VAULT_BAL: u64 = 1_000_000;
+    const TARGET_AMT: u64 = 5_000_000_000;
+    const INIT_BAL: u64 = 1_000_000_000;
+    const VAULT_BAL: u64 = 10_000_000_000;
 
     builder
         .builder
-        .add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
+        .add_account(user.pubkey(), Account::new(INIT_BAL, 0, &system_program::ID));
     builder
         .builder
-        .add_account_with_lamports(horse, system_program::ID, VAULT_BAL);
+        .add_account(horse, Account::new(VAULT_BAL, 0, &system_program::ID));
 
-    let mut challenge = builder.build();
+    let mut challenge = builder.build().await;
 
     // create a horsewallet
-    challenge.env.execute_as_transaction(
+    challenge.run_ixs_full(
         &[create(program_pubkey, user.pubkey())],
         &[&user],
-    );
+        &user.pubkey(),
+    ).await?;
 
     // run solve
-    challenge.input_instruction(solve_pubkey, &[&user]).unwrap();
+    challenge.read_instruction(solve_pubkey).unwrap();
+    // challenge.run_ixs_full(
+    //     &[get_horse(program_pubkey, user.pubkey())],
+    //     &[&user],
+    //     &user.pubkey(),
+    // ).await?;
 
     // check solve
-    let balance = challenge.env.get_account(user.pubkey()).unwrap().lamports;
+    let balance = challenge.ctx.banks_client.get_account(user.pubkey()).await?.unwrap().lamports;
     writeln!(socket, "lamports: {:?}", balance)?;
 
     if balance > TARGET_AMT {

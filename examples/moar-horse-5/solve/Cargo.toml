@@ -4,9 +4,9 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-borsh = "0.9.3"
-borsh-derive = "0.9.3"
-solana-program = "1.8.14"
+borsh = "1.5.7"
+borsh-derive = "1.5.7"
+solana-program = "=2.2.1"
 moar-horse = { version = "1.0.0", path = "../program", features = ["no-entrypoint"] }
 
 [lib]

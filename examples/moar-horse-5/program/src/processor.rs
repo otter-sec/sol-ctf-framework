@@ -16,6 +16,7 @@ use solana_program::{
   program_error::ProgramError,
   pubkey::Pubkey,
   system_instruction,
+  sysvar::rent::Rent,
 };
 
 use crate::{
@@ -47,11 +48,12 @@ fn create(program: &Pubkey, accounts: &[AccountInfo], horse_bump: u8, wallet_bum
   assert!(wallet.data_is_empty());
   assert!(user.is_signer);
 
+  let rent = Rent::default();
   invoke_signed(
     &system_instruction::create_account(
       &user.key,
       &wallet_address,
-      1,
+      rent.minimum_balance(WALLET_SIZE),
       WALLET_SIZE as u64,
       &program,
     ),
