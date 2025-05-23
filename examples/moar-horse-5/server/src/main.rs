@@ -19,7 +19,7 @@ use std::{
 };
 
 use moar_horse::{
-    create, get_horse,
+    create, get_horse, get_wallet,
 };
 
 #[tokio::main]  
@@ -60,10 +60,11 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     // add accounts and lamports
     let (horse, _) = get_horse(program_pubkey);
 
-    const TARGET_AMT: u64 = 5_000_000_000;
-    const INIT_BAL: u64 = 1_000_000_000;
-    const VAULT_BAL: u64 = 10_000_000_000;
+    const TARGET_AMT: u64 = 100_000;
+    const INIT_BAL: u64 = 1_447_680 + 5_000 + 890_880 + 5_000;
+    const VAULT_BAL: u64 = 1_000_000;
 
+    
     builder
         .builder
         .add_account(user.pubkey(), Account::new(INIT_BAL, 0, &system_program::ID));
@@ -81,12 +82,12 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     ).await?;
 
     // run solve
-    challenge.read_instruction(solve_pubkey).unwrap();
-    // challenge.run_ixs_full(
-    //     &[get_horse(program_pubkey, user.pubkey())],
-    //     &[&user],
-    //     &user.pubkey(),
-    // ).await?;
+    let ixs = challenge.read_instruction(solve_pubkey).unwrap();
+    challenge.run_ixs_full(
+        &[ixs],
+        &[&user],
+        &user.pubkey(),
+    ).await?;
 
     // check solve
     let balance = challenge.ctx.banks_client.get_account(user.pubkey()).await?.unwrap().lamports;

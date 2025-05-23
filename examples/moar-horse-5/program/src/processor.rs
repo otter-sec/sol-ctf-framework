@@ -16,7 +16,7 @@ use solana_program::{
   program_error::ProgramError,
   pubkey::Pubkey,
   system_instruction,
-  sysvar::rent::Rent,
+  rent::Rent,
 };
 
 use crate::{
