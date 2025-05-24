@@ -60,9 +60,12 @@ async fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> 
     // add accounts and lamports
     let (horse, _) = get_horse(program_pubkey);
 
-    const TARGET_AMT: u64 = 100_000;
-    const INIT_BAL: u64 = 1_447_680 + 5_000 + 890_880 + 5_000;
-    const VAULT_BAL: u64 = 1_000_000;
+    // const TARGET_AMT: u64 = 100_000;
+    // const INIT_BAL: u64 = 1_447_680 + 5_000 + 890_880 + 5_000;
+    // const VAULT_BAL: u64 = 1_000_000;
+    const TARGET_AMT: u64 = 9_000_000_000;
+    const INIT_BAL: u64 =  2_000_000_000;
+    const VAULT_BAL: u64 = 10_000_000_000;
 
     
     builder

@@ -39,5 +39,13 @@ print("HORSE_BUMP=", ID)
 r.sendline(b'x ' + str(ID).encode())
 r.sendline(b'0')
 
-r.recvuntil(b'Flag: ')
+leak = r.recvuntil(b'Flag: ')
+print(leak)
 r.stream()
+
+
+"""
+ 1998542320
+ 1998541936
+10998541936
+"""

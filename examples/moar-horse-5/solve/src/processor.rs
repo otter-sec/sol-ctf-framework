@@ -13,6 +13,7 @@ use solana_program::{
   program::invoke,
   pubkey::Pubkey,
   system_program,
+  msg,
 };
 
 use moar_horse::HorseInstruction;
@@ -25,6 +26,13 @@ pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &
   let wallet = next_account_info(account_iter)?;
 
   let amount = (u64::MAX / 1000) + 1;
+  msg!("Amount to buy: {}", amount);
+
+  // print via msg the amount each of user horse and wallet have
+  msg!("Starting balance");
+  msg!("user: {}", user.lamports());
+  msg!("horse: {}", horse.lamports());
+  msg!("wallet: {}", wallet.lamports());
 
   invoke(
     &Instruction {
@@ -40,6 +48,11 @@ pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &
     &[horse.clone(), wallet.clone(), user.clone()],
   )?;
 
+  msg!("After first purchase");
+  msg!("user: {}", user.lamports());
+  msg!("horse: {}", horse.lamports());
+  msg!("wallet: {}", wallet.lamports());
+
   invoke(
     &Instruction {
       program_id: *moarhorse.key,
@@ -49,10 +62,15 @@ pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &
         AccountMeta::new(*user.key, true),
         AccountMeta::new_readonly(system_program::id(), false),
       ],
-      data: to_vec(&HorseInstruction::Sell { amount: 100 }).unwrap(),
+      data: to_vec(&HorseInstruction::Sell { amount: 9000000 }).unwrap(),
     },
     &[horse.clone(), wallet.clone(), user.clone()],
   )?;
+
+  msg!("After selling");
+  msg!("user: {}", user.lamports());
+  msg!("horse: {}", horse.lamports());
+  msg!("wallet: {}", wallet.lamports());
 
   Ok(())
 }
