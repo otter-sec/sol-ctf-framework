@@ -12,10 +12,10 @@ use solana_program::{
   },
   program::invoke,
   pubkey::Pubkey,
-  system_program,
   msg,
 };
 
+use solana_system_interface::program as system_program;
 use moar_horse::HorseInstruction;
 
 pub fn process_instruction(_program: &Pubkey, accounts: &[AccountInfo], _data: &[u8]) -> ProgramResult {

@@ -12,9 +12,10 @@ use solana_program::{
     AccountMeta,
     Instruction,
   },
-  system_program,
   pubkey::Pubkey,
 };
+
+use solana_system_interface::program as system_program;
 
 use std::mem::size_of;
 

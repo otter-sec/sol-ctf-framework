@@ -5,8 +5,7 @@ use solana_sdk::{
     account::Account,
     signature::{Keypair, Signer},
 };
-
-use solana_program::system_program;
+use solana_system_interface::program as system_program;
 
 use std::{
     fs,

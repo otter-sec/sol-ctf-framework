@@ -15,12 +15,13 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     pubkey::Pubkey,
 };
+use solana_system_interface::instruction as system_instruction;
 
 use tempfile::Builder;
 
 mod helpers {
     use solana_sdk::signature::Keypair;
-    use rand::{prelude::StdRng, SeedableRng};
+    use rand::{prelude::StdRng, Rng, SeedableRng};
     use sha2::{Digest, Sha256};
 
     pub fn keypair_from_data(data: &[u8]) -> Keypair {
@@ -29,7 +30,7 @@ mod helpers {
 
         // panic here is probably fine since this should always be 32 bytes, regardless of user input
         let mut rng = StdRng::from_seed(hash.finalize()[..].try_into().unwrap());
-        Keypair::generate(&mut rng)
+        Keypair::new_from_array(rng.gen::<[u8; 32]>())
     }
 }
 
@@ -131,7 +132,7 @@ impl<R: BufRead, W: Write> Challenge<R, W> {
     let payer = &self.ctx.payer;
     let mut tx = Transaction::new_with_payer(
         &[
-            solana_program::system_instruction::create_account(
+            system_instruction::create_account(
                 &payer.pubkey(),
                 &token_account,
                 10000000,
@@ -161,7 +162,7 @@ pub async fn add_mint(&mut self) -> Result<Pubkey, Box<dyn Error>> {
     let payer = &self.ctx.payer;
     let mut tx = Transaction::new_with_payer(
         &[
-            solana_program::system_instruction::create_account(
+            system_instruction::create_account(
                 &payer.pubkey(),
                 &mint,
                 10000000,
