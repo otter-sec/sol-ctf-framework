@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 sol-ctf-framework = { version = "0.1.0", path = "../../../" }
-solana-sdk = "3.0.0"
-solana-system-interface = { version = "3.0.0", features = ["bincode"] }
+solana-sdk = "3.0"
+solana-system-interface = { version = "3.0", features = ["bincode"] }
 threadpool = "1.8.1"
 moar-horse = { version = "1.0.0", path = "../program" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
