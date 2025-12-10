@@ -1,12 +1,11 @@
-use solana_sdk::signature::Keypair;
-use solana_sdk::signature::Signer;
 use sol_ctf_framework::ChallengeBuilder;
-use solana_program::pubkey::Pubkey;
-use solana_program::system_program;
-use std::env;
-use std::io::Write;
+use solana_program_test::tokio::runtime::Runtime;
+use solana_sdk::{account::Account, pubkey::Pubkey, signature::{Keypair, Signer}};
+use solana_system_interface::program as system_program;
 use std::{
+    env,
     error::Error,
+    io::Write,
     net::{TcpListener, TcpStream},
 };
 use threadpool::ThreadPool;
@@ -25,6 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
+    let runtime = Runtime::new()?;
     let mut builder = ChallengeBuilder::try_from(socket.try_clone().unwrap()).unwrap();
 
     let solve_pubkey = match builder.input_program() {
@@ -34,7 +34,9 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
     };
-    let program_pubkey = builder.chall_programs(&["./examples/solfire/solfire.so"])[0];
+    let program_pubkey = builder
+        .add_program("./examples/solfire/solfire.so", None)
+        .expect("Duplicate challenge program");
 
     let user = Keypair::new();
 
@@ -50,22 +52,43 @@ fn handle_connection(mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
 
     builder
         .builder
-        .add_account_with_lamports(user.pubkey(), system_program::ID, INIT_BAL);
+        .add_account(user.pubkey(), Account::new(INIT_BAL, 0, &system_program::ID));
     builder
         .builder
-        .add_account_with_lamports(vault, system_program::ID, VAULT_BAL);
+        .add_account(vault, Account::new(VAULT_BAL, 0, &system_program::ID));
 
-    let mut challenge = builder.build();
+    let mut challenge = runtime.block_on(builder.build());
 
-    challenge.input_instruction(solve_pubkey, &[&user]).unwrap();
+    let solve_ix = match challenge.read_instruction(solve_pubkey) {
+        Ok(ix) => ix,
+        Err(e) => {
+            writeln!(socket, "Error: cannot read solve instruction → {e}")?;
+            return Ok(());
+        }
+    };
 
-    let balance = challenge.env.get_account(user.pubkey()).unwrap().lamports;
+    let payer = challenge.ctx.payer.insecure_clone();
+    let payer_pubkey = payer.pubkey();
+    let signers: [&Keypair; 2] = [&payer, &user];
+    if let Err(e) = runtime.block_on(challenge.run_ixs_full(&[solve_ix], &signers, &payer_pubkey))
+    {
+        writeln!(socket, "Error: transaction failed → {e}")?;
+        return Ok(());
+    }
+
+    let balance = runtime
+        .block_on(challenge.ctx.banks_client.get_account(user.pubkey()))?
+        .unwrap()
+        .lamports;
 
     writeln!(socket, "user bal: {:?}", balance)?;
     writeln!(
         socket,
         "vault bal: {:?}",
-        challenge.env.get_account(vault).unwrap().lamports
+        runtime
+            .block_on(challenge.ctx.banks_client.get_account(vault))?
+            .unwrap()
+            .lamports
     )?;
 
     if balance > TARGET_AMT {

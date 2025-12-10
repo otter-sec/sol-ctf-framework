@@ -15,9 +15,10 @@ use solana_program::{
   },
   program_error::ProgramError,
   pubkey::Pubkey,
-  system_instruction,
   rent::Rent,
 };
+
+use solana_system_interface::instruction as system_instruction;
 
 use crate::{
   HorseInstruction,
